@@ -31,13 +31,16 @@ module "lambda_function" {
   source  = "terraform-aws-modules/lambda/aws"
   version = "7.17.0"
 
-  function_name = var.lambda_function_name
-  function_tags = var.tags
-  description   = var.lambda_description
-  handler       = "handler.lambda_handler"
-  runtime       = var.lambda_runtime
-  source_path   = "${path.module}/assets/functions/handler.py"
-  tags          = var.tags
+  function_name                = var.lambda_function_name
+  function_tags                = var.tags
+  description                  = var.lambda_description
+  handler                      = "handler.lambda_handler"
+  hash_extra                   = "graveyard_ou_name=${var.graveyard_ou_name}"
+  runtime                      = var.lambda_runtime
+  source_path                  = "${path.module}/assets/functions/handler.py"
+  tags                         = var.tags
+  timeout                      = 30
+  trigger_on_package_timestamp = false
   environment_variables = {
     GRAVEYARD_OU_NAME = var.graveyard_ou_name
     SNS_TOPIC_ARN     = var.sns_topic_arn

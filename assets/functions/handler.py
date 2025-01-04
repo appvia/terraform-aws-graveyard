@@ -76,7 +76,7 @@ def lambda_handler(event, context):
     AWS Lambda handler that processes account closure events and moves closed accounts to a Graveyard OU.
     """
     try:
-        graveyard_ou_id = os.environ['GRAVEYARD_OU_ID']
+        graveyard_ou_id = get_ou_id_by_name(os.environ['GRAVEYARD_OU_NAME'])
         accounts_to_process = get_accounts_to_process(graveyard_ou_id)
         
         if not accounts_to_process:
