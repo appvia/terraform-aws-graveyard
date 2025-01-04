@@ -1,0 +1,7 @@
+AVD-DS-0013   # Use Workdir Over Cd (https://avd.aquasec.com/misconfig/dockerfile/general/avd-ds-0013/)
+AVD-DS-0015   # Purge Yum Package Cache (https://avd.aquasec.com/misconfig/dockerfile/general/avd-ds-0015/)
+AVD-AWS-0066  # Enable Tracing (https://avd.aquasec.com/misconfig/aws/lambda/avd-aws-0066/)
+AVD-DS-0001   # Use Specific Tags (https://avd.aquasec.com/misconfig/dockerfile/general/avd-ds-0001/)
+AVD-DS-0002   # Least Privilege User (https://avd.aquasec.com/misconfig/dockerfile/general/avd-ds-0002/)
+AVD-DS-0026   # No Healthcheck (https://avd.aquasec.com/misconfig/dockerfile/general/avd-ds-0026/)
+
