@@ -29,7 +29,7 @@ data "aws_iam_policy_document" "lambda_policy" {
 ## Lambda function that handles AWS Organization account movements, using the terraform-aws-modules/lambda/aws module
 module "lambda_function" {
   source  = "terraform-aws-modules/lambda/aws"
-  version = "7.20.1"
+  version = "7.21.0"
 
   function_name                = var.lambda_function_name
   function_tags                = var.tags
