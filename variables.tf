@@ -47,7 +47,7 @@ variable "lambda_role_path" {
 variable "lambda_runtime" {
   description = "Runtime for the Lambda function"
   type        = string
-  default     = "python3.9"
+  default     = "python3.13"
 }
 
 variable "sns_topic_arn" {
