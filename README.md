@@ -15,6 +15,8 @@
 
 The Terraform AWS Graveyard module provides an automated solution for managing closed AWS accounts within AWS Organizations. This module creates a comprehensive Lambda-based system that automatically identifies and moves suspended/closed accounts to a designated "Graveyard" Organizational Unit (OU), ensuring clean organizational structure and improved account lifecycle management.
 
+**Deployment Context**: This module is designed to be deployed in your **AWS Organization Management Account** (formerly known as master account), as it requires organization-wide permissions to list and move accounts. It integrates seamlessly with AWS Landing Zone Accelerator (LZA), AWS Control Tower, or custom multi-account strategies.
+
 ## Purpose & Intent
 
 ### **Problem Statement**
@@ -48,17 +50,26 @@ This module provides an automated, event-driven solution that:
 
 ### 🛡️ **Robust Error Handling**
 
-- **Retry Logic**: Implements exponential backoff for transient failures
-- **Comprehensive Logging**: Detailed CloudWatch logs for monitoring and debugging
-- **Graceful Degradation**: Continues processing other accounts if one fails
-- **Error Reporting**: Tracks both successful and failed account movements
+- **Exponential Backoff Retry**: Automatically retries failed `MoveAccount` operations up to 3 times with exponential backoff (1s, 2s, 4s delays)
+- **Comprehensive Logging**: Structured CloudWatch logs capture every step - account detection, OU lookup, movement attempts, and results
+- **Graceful Degradation**: If one account fails to move, processing continues for remaining accounts instead of failing completely
+- **Detailed Status Reporting**: Lambda returns JSON response with `processed_accounts`, `failed_accounts`, `total_processed`, and `total_failed` counts
+- **Duplicate Prevention**: Automatically skips accounts already in the Graveyard OU to avoid unnecessary API calls
 
 ### 🔐 **Security & Compliance**
 
-- **Least Privilege Access**: Minimal IAM permissions required for operation
-- **Audit Trail**: Complete logging of all account movements
-- **Encryption Support**: Optional KMS encryption for CloudWatch logs
-- **Tagging Support**: Consistent resource tagging for governance
+- **Least Privilege IAM Policy**: Lambda execution role is granted only the minimum required Organizations permissions:
+  - `organizations:ListAccounts` - Enumerate all accounts in the organization
+  - `organizations:ListRoots` - Identify the organization root
+  - `organizations:ListOrganizationalUnitsForParent` - Recursively search for Graveyard OU
+  - `organizations:ListParents` - Determine current parent of each account
+  - `organizations:DescribeOrganizationalUnit` - Retrieve OU details
+  - `organizations:MoveAccount` - Move suspended accounts to Graveyard OU
+  - `sns:Publish` - Send notifications (only when SNS topic is configured)
+- **Complete Audit Trail**: Every account movement is logged to CloudWatch with account ID, name, and destination OU
+- **Encryption at Rest**: Optional KMS encryption for CloudWatch logs ensures sensitive account data is protected
+- **Infrastructure as Code**: All resources are version-controlled and deployed via Terraform for reproducibility
+- **Tagging Strategy**: Consistent resource tagging enables governance, cost allocation, and compliance reporting
 
 ### 📊 **Monitoring & Alerting**
 
@@ -80,14 +91,14 @@ This module provides an automated, event-driven solution that:
 
 ```mermaid
 graph TB
-    A[AWS Organizations] -->|Account Closure Event| B[EventBridge Rule]
-    C[EventBridge Scheduler] -->|Periodic Check| D[Lambda Function]
+    A[AWS Organizations] -->|Account Closure Event| B[EventBridge Rule: CloseAccount]
+    C[EventBridge Rule: Scheduled] -->|Periodic Check| D[Lambda Function]
     B --> D
     D --> E[AWS Organizations API]
     D --> F[CloudWatch Logs]
-    D --> G[SNS Topic]
+    D --> G[SNS Topic Optional]
     E --> H[Graveyard OU]
-    
+
     subgraph "Lambda Function"
         D1[Event Processing]
         D2[Account Detection]
@@ -99,11 +110,23 @@ graph TB
 
 ### **Data Flow**
 
-1. **Event Detection**: AWS Organizations account closure events trigger EventBridge
-2. **Lambda Invocation**: EventBridge invokes the Lambda function
-3. **Account Processing**: Lambda identifies closed accounts not in Graveyard OU
-4. **Account Movement**: Closed accounts are moved to the designated Graveyard OU
-5. **Logging & Notification**: Results are logged and optionally sent via SNS
+**Event-Driven Flow:**
+1. **Account Closure**: Administrator closes an AWS account through AWS Organizations
+2. **CloudTrail Capture**: CloudTrail logs the `CloseAccount` event
+3. **EventBridge Trigger**: EventBridge rule matches the event and invokes Lambda
+4. **Lambda Processing**:
+   - Lambda lists all accounts with `SUSPENDED` status
+   - Recursively searches organization tree to find Graveyard OU by name
+   - Identifies accounts not already in Graveyard OU
+   - Attempts to move each account with retry logic
+5. **Account Movement**: `MoveAccount` API call relocates suspended accounts to Graveyard OU
+6. **Logging & Notification**: Results logged to CloudWatch; optional SNS notification sent
+
+**Scheduled Reconciliation Flow:**
+1. **Scheduled Trigger**: EventBridge rule fires based on `schedule_expression` (default: daily)
+2. **Comprehensive Scan**: Lambda scans entire organization for suspended accounts
+3. **Gap Closure**: Catches any accounts missed due to event delivery failures
+4. **Same Processing**: Follows steps 4-6 from event-driven flow above
 
 ### **Security Model**
 
@@ -114,176 +137,213 @@ graph TB
 
 ## Usage
 
-### **Basic Usage**
+### **The "Golden Path" - Simple Deployment**
+
+The most common way to use this module with minimal configuration. This example is ideal for organizations just starting with automated account lifecycle management.
 
 ```hcl
-module "aws_graveyard_lambda" {
+module "graveyard" {
   source  = "appvia/graveyard/aws"
   version = "0.0.1"
 
-  # Required variables
+  # Required: Name of the OU where closed accounts will be moved
   graveyard_ou_name = "Graveyard"
-  lambda_role_name  = "graveyard-lambda-role"
 
-  # Optional configuration
-  schedule_expression = "rate(1 day)"
-  lambda_function_name = "aws-account-graveyard"
-  
+  # Required: IAM role name for the Lambda function
+  lambda_role_name = "graveyard-lambda-role"
+
+  # Required: Tags for all resources
   tags = {
-    Environment = "prod"
-    Managed_by  = "terraform"
-    Purpose     = "account-management"
-    Team        = "platform"
+    Environment = "production"
+    ManagedBy   = "terraform"
+    Purpose     = "account-lifecycle"
   }
 }
 ```
 
-### **Advanced Configuration**
+This minimal configuration:
+- Creates a Lambda function that runs daily to check for suspended accounts
+- Automatically moves suspended accounts to the "Graveyard" OU
+- Uses Python 3.13 runtime (latest supported version)
+- Retains CloudWatch logs for 3 days (cost-optimized default)
+
+### **The "Power User" - Advanced Configuration**
+
+For organizations requiring enhanced monitoring, custom scheduling, and compliance features.
 
 ```hcl
-module "aws_graveyard_lambda" {
+module "graveyard" {
   source  = "appvia/graveyard/aws"
   version = "0.0.1"
 
-  # Required variables
-  graveyard_ou_name = "Closed-Accounts"
-  lambda_role_name  = "account-graveyard-role"
-
-  # Lambda configuration
-  lambda_function_name = "aws-account-graveyard"
-  lambda_description   = "Automated account graveyard management"
-  lambda_runtime       = "python3.9"
+  # Core configuration
+  graveyard_ou_name    = "Closed-Accounts"
+  lambda_role_name     = "account-graveyard-role"
+  lambda_function_name = "account-lifecycle-manager"
+  lambda_description   = "Automated account graveyard with enhanced monitoring"
   lambda_role_path     = "/service-roles/"
 
-  # Scheduling
-  schedule_expression = "cron(0 12 * * ? *)"  # Daily at noon UTC
+  # Custom scheduling: Check every 6 hours instead of daily
+  schedule_expression = "rate(6 hours)"
 
-  # Monitoring and alerting
+  # SNS notifications for account movements
   sns_topic_arn = "arn:aws:sns:us-east-1:123456789012:account-alerts"
 
-  # CloudWatch configuration
-  cloudwatch_logs_retention_in_days = 30
-  cloudwatch_logs_log_group_class   = "STANDARD"
+  # Enhanced CloudWatch configuration
+  cloudwatch_logs_retention_in_days = 90  # 90-day retention for audit
   cloudwatch_logs_kms_key_id        = "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"
-
-  tags = {
-    Environment   = "production"
-    Managed_by    = "terraform"
-    Purpose       = "account-lifecycle-management"
-    Team          = "platform-engineering"
-    Cost_Center   = "infrastructure"
-    Compliance    = "required"
-  }
-}
-```
-
-### **Use Cases**
-
-#### **1. Enterprise Account Lifecycle Management**
-
-```hcl
-# For large enterprises with complex organizational structures
-module "enterprise_graveyard" {
-  source = "appvia/graveyard/aws"
-  
-  graveyard_ou_name = "Enterprise-Graveyard"
-  lambda_role_name  = "enterprise-graveyard-role"
-  
-  # More frequent checks for large organizations
-  schedule_expression = "rate(6 hours)"
-  
-  # Enhanced monitoring
-  sns_topic_arn = var.account_management_sns_topic
-  
-  tags = {
-    Environment = "prod"
-    Business_Unit = "IT"
-    Compliance_Level = "high"
-  }
-}
-```
-
-#### **2. Multi-Environment Setup**
-
-```hcl
-# Development environment
-module "dev_graveyard" {
-  source = "appvia/graveyard/aws"
-  
-  graveyard_ou_name = "Dev-Graveyard"
-  lambda_role_name  = "dev-graveyard-role"
-  
-  schedule_expression = "rate(1 day)"
-  
-  tags = {
-    Environment = "dev"
-    Purpose     = "account-cleanup"
-  }
-}
-
-# Production environment
-module "prod_graveyard" {
-  source = "appvia/graveyard/aws"
-  
-  graveyard_ou_name = "Prod-Graveyard"
-  lambda_role_name  = "prod-graveyard-role"
-  
-  # More frequent checks in production
-  schedule_expression = "rate(4 hours)"
-  
-  # Enhanced monitoring and alerting
-  sns_topic_arn = var.prod_alerting_sns_topic
-  cloudwatch_logs_retention_in_days = 90
-  
-  tags = {
-    Environment = "prod"
-    Purpose     = "account-cleanup"
-    Criticality = "high"
-  }
-}
-```
-
-#### **3. Compliance-Focused Setup**
-
-```hcl
-# For organizations with strict compliance requirements
-module "compliance_graveyard" {
-  source = "appvia/graveyard/aws"
-  
-  graveyard_ou_name = "Compliance-Graveyard"
-  lambda_role_name  = "compliance-graveyard-role"
-  
-  # Enhanced logging and encryption
-  cloudwatch_logs_kms_key_id        = var.compliance_kms_key
-  cloudwatch_logs_retention_in_days = 2557  # 7 years
   cloudwatch_logs_log_group_class   = "STANDARD"
-  
-  # Immediate notifications
-  sns_topic_arn = var.compliance_sns_topic
-  
+
   tags = {
-    Environment     = "prod"
-    Compliance      = "required"
-    Data_Retention  = "7-years"
-    Audit_Required  = "true"
+    Environment      = "production"
+    ManagedBy        = "terraform"
+    Team             = "platform-engineering"
+    CostCenter       = "shared-services"
+    ComplianceLevel  = "high"
   }
 }
 ```
+
+This advanced setup adds:
+- More frequent reconciliation checks (every 6 hours)
+- SNS notifications when accounts are moved
+- KMS encryption for CloudWatch logs
+- Extended log retention for compliance auditing
+
+### **The "Edge Case" - Multi-Region & Compliance**
+
+For highly regulated industries requiring strict audit trails, encryption, and cron-based scheduling aligned with business hours.
+
+```hcl
+# Define local variables for reusability
+locals {
+  environment       = "production"
+  compliance_kms_id = "arn:aws:kms:us-east-1:123456789012:key/abcd1234-5678-90ab-cdef-1234567890ab"
+
+  common_tags = {
+    Environment      = "production"
+    ManagedBy        = "terraform"
+    ComplianceLevel  = "hipaa-pci"
+    DataRetention    = "7-years"
+    AuditRequired    = "true"
+    Team             = "compliance-platform"
+  }
+}
+
+module "graveyard" {
+  source  = "appvia/graveyard/aws"
+  version = "0.0.1"
+
+  # Core configuration
+  graveyard_ou_name    = "HIPAA-Graveyard"
+  lambda_role_name     = "hipaa-graveyard-role"
+  lambda_function_name = "hipaa-account-graveyard"
+  lambda_description   = "HIPAA-compliant account lifecycle management"
+  lambda_role_path     = "/compliance/"
+
+  # Cron schedule: Run at 2 AM UTC every day (aligned with maintenance window)
+  schedule_expression = "cron(0 2 * * ? *)"
+
+  # Compliance-grade CloudWatch configuration
+  cloudwatch_logs_retention_in_days = 2557  # 7 years for HIPAA compliance
+  cloudwatch_logs_kms_key_id        = local.compliance_kms_id
+  cloudwatch_logs_log_group_class   = "STANDARD"
+
+  # SNS topic for compliance team notifications
+  sns_topic_arn = "arn:aws:sns:us-east-1:123456789012:compliance-critical-alerts"
+
+  tags = local.common_tags
+}
+
+# Additional CloudWatch alarm for monitoring Lambda failures
+resource "aws_cloudwatch_metric_alarm" "graveyard_errors" {
+  alarm_name          = "graveyard-lambda-errors"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "Errors"
+  namespace           = "AWS/Lambda"
+  period              = "300"
+  statistic           = "Sum"
+  threshold           = "0"
+  alarm_description   = "Alert on any Lambda execution errors"
+  alarm_actions       = ["arn:aws:sns:us-east-1:123456789012:compliance-critical-alerts"]
+
+  dimensions = {
+    FunctionName = "hipaa-account-graveyard"
+  }
+
+  tags = local.common_tags
+}
+```
+
+This compliance-focused setup includes:
+- 7-year log retention for HIPAA/PCI-DSS requirements
+- KMS encryption for all logs
+- Cron-based scheduling during maintenance windows
+- Custom IAM role path for organizational segregation
+- Additional CloudWatch alarms for operational monitoring
+- Structured tagging strategy for compliance reporting
+
+## Operational Context
+
+### **Known Limitations**
+
+Before deploying this module, be aware of these AWS service limitations and design considerations:
+
+1. **Account Movement Limitations**
+   - AWS Organizations may throttle `MoveAccount` API calls. The Lambda includes exponential backoff retry logic (3 attempts) to handle transient failures.
+   - Accounts can only be moved between OUs within the same organization.
+   - The Lambda timeout is set to 30 seconds, which should be sufficient for most scenarios but may need adjustment for very large organizations.
+
+2. **OU Lookup Behavior**
+   - The module recursively searches the entire organization tree to find the Graveyard OU by name.
+   - If multiple OUs exist with the same name, the first match in the tree traversal will be used.
+   - The Graveyard OU **must exist** before deploying this module - it is not created automatically.
+
+3. **Account Status Detection**
+   - The module only processes accounts with status `SUSPENDED` (which is AWS's designation for closed accounts).
+   - Newly closed accounts may take a few minutes to appear in EventBridge events due to eventual consistency.
+   - The scheduled reconciliation job ensures no accounts are missed due to event delivery failures.
+
+4. **IAM Permissions**
+   - The Lambda function requires organization-wide read permissions (`organizations:List*`, `organizations:Describe*`).
+   - The `organizations:MoveAccount` permission has organization-wide scope and cannot be restricted to specific OUs.
+   - If using SNS notifications, ensure the Lambda execution role can publish to the specified topic.
+
+5. **Event-Driven Processing**
+   - EventBridge rules monitor CloudTrail for `CloseAccount` events. Ensure CloudTrail is enabled in your organization management account.
+   - The module creates two separate event triggers: one for real-time events and one for scheduled reconciliation.
+
+6. **Cost Considerations**
+   - CloudWatch Logs retention defaults to 3 days to minimize costs. For compliance use cases, increase retention as needed.
+   - Lambda invocations are typically infrequent (scheduled checks + occasional account closures), resulting in minimal compute costs.
+   - Consider using CloudWatch Logs Infrequent Access class for long-term retention to reduce storage costs.
+
+### **AWS Service Quotas to Monitor**
+
+- **EventBridge**: 300 rules per region (default) - this module creates 2 rules
+- **Lambda**: 1000 concurrent executions per region (default) - this function is not compute-intensive
+- **Organizations API**: Rate limits apply to `ListAccounts` and `MoveAccount` operations
 
 ## Monitoring & Troubleshooting
 
 ### **CloudWatch Logs**
 
-The module creates comprehensive CloudWatch logs for monitoring and debugging:
+The module creates comprehensive CloudWatch logs for monitoring and debugging. The log group name follows the pattern `/aws/lambda/<lambda_function_name>` (default: `/aws/lambda/lza-graveyard`).
 
 ```bash
-# View recent logs
+# View recent logs (replace with your function name if customized)
 aws logs tail /aws/lambda/lza-graveyard --follow
 
-# Search for specific events
+# Search for errors
 aws logs filter-log-events \
   --log-group-name /aws/lambda/lza-graveyard \
   --filter-pattern "ERROR"
+
+# Search for successful account movements
+aws logs filter-log-events \
+  --log-group-name /aws/lambda/lza-graveyard \
+  --filter-pattern "moved to Graveyard"
 ```
 
 ### **Key Log Messages**
@@ -331,34 +391,57 @@ Skipping closed account 123456789012 - already in Graveyard OU
 
 ### **Testing the Module**
 
+After deployment, you can manually invoke the Lambda function to test account detection and movement:
+
 ```bash
-# Test the Lambda function directly
+# Test the Lambda function directly (replace function name if customized)
 aws lambda invoke \
   --function-name lza-graveyard \
   --payload '{}' \
   response.json
 
-# Check the response
-cat response.json
+# Check the response for processed/failed accounts
+cat response.json | jq '.'
+
+# Expected output structure:
+# {
+#   "statusCode": 200,
+#   "body": {
+#     "processed_accounts": ["123456789012"],
+#     "failed_accounts": [],
+#     "total_processed": 1,
+#     "total_failed": 0
+#   }
+# }
+
+# View the CloudWatch logs immediately after invocation
+aws logs tail /aws/lambda/lza-graveyard --since 5m --follow
 ```
 
 ## Requirements
 
 ### **Prerequisites**
 
-- AWS Organizations enabled
-- Appropriate IAM permissions for Organizations API
-- Graveyard OU must exist in your organization
-- Terraform >= 1.0
+Before deploying this module, ensure you have:
+
+- **AWS Organizations**: Your AWS environment must have Organizations enabled and be deployed in the organization management account
+- **Graveyard OU Created**: The target Organizational Unit must exist before deploying this module - create it manually or via Infrastructure as Code
+- **CloudTrail Enabled**: Required for EventBridge to capture `CloseAccount` events (should be enabled in the management account)
+- **IAM Permissions**: The identity deploying this module needs permissions to create Lambda functions, IAM roles, EventBridge rules, and CloudWatch log groups
+- **Terraform**: Version >= 1.0.7
+- **AWS Provider**: Version >= 5.0.0
 
 ### **AWS Services Used**
 
-- AWS Lambda
-- AWS EventBridge
-- AWS Organizations
-- AWS CloudWatch Logs
-- AWS SNS (optional)
-- AWS KMS (optional)
+| Service | Purpose | Required |
+|---------|---------|----------|
+| AWS Lambda | Executes account movement logic (Python 3.13 runtime) | Yes |
+| AWS EventBridge | Triggers Lambda on account closure events and scheduled intervals | Yes |
+| AWS Organizations | Lists accounts and moves closed accounts to Graveyard OU | Yes |
+| AWS CloudWatch Logs | Stores Lambda execution logs for monitoring and debugging | Yes |
+| AWS SNS | Sends notifications when accounts are moved (optional) | No |
+| AWS KMS | Encrypts CloudWatch logs (optional, for compliance) | No |
+| AWS CloudTrail | Captures organization events for EventBridge (must be pre-configured) | Yes |
 
 ## Update Documentation
 
