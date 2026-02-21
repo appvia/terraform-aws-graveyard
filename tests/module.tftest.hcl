@@ -391,7 +391,7 @@ mock_provider "aws" {
 
   mock_data "aws_iam_policy" {
     defaults = {
-      arn = "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
+      arn    = "arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess"
       policy = "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"xray:PutTraceSegments\",\"xray:PutTelemetryRecords\"],\"Resource\":\"*\"}]}"
     }
   }

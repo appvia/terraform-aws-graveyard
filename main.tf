@@ -77,9 +77,9 @@ module "lambda_function" {
 # - EventSource: organizations.amazonaws.com
 # - EventName: CloseAccount
 resource "aws_cloudwatch_event_rule" "account_closed" {
-  name = "${var.lambda_function_name}-trigger"
+  name        = "${var.lambda_function_name}-trigger"
   description = "Captures AWS Organizations account closure events"
-  tags = var.tags
+  tags        = var.tags
 
   event_pattern = jsonencode({
     detail-type = ["AWS Service Event via CloudTrail"]
