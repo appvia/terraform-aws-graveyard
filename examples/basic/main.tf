@@ -10,7 +10,6 @@ module "graveyard" {
   # Example required variables
   graveyard_ou_name    = "Graveyard"
   lambda_function_name = "lza-graveyard"
-  lambda_role_name     = "lza-graveyard"
 
   # Example optional variables with default values
   tags = {

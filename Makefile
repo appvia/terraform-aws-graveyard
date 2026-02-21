@@ -12,7 +12,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
-.PHONY: all security lint format documentation documentation-examples validate-all validate validate-examples init examples tests
+.PHONY: all security lint format documentation documentation-examples validate-all validate validate-examples init examples tests python-tests
 
 default: all
 
@@ -100,6 +100,15 @@ security-examples:
 tests:
 	@echo "--> Running Terraform Tests"
 	@terraform test
+
+python-tests:
+	@echo "--> Running Python tests"
+	@if command -v pytest >/dev/null 2>&1; then \
+		pytest assets/functions/test_handler.py -v; \
+	else \
+		echo "pytest not found. Install with: pip install pytest"; \
+		exit 1; \
+	fi
 
 validate:
 	@echo "--> Running terraform validate"

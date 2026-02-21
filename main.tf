@@ -48,25 +48,25 @@ module "lambda_function" {
 
   ## Lambda Role
   create_role                   = true
-  role_name                     = var.lambda_role_name
-  role_tags                     = var.tags
   role_force_detach_policies    = true
-  role_permissions_boundary     = null
   role_maximum_session_duration = 3600
+  role_name                     = var.lambda_function_name
   role_path                     = var.lambda_role_path
+  role_permissions_boundary     = null
+  role_tags                     = var.tags
 
   ## IAM Policy
-  attach_policy_json            = true
-  attach_network_policy         = false
   attach_cloudwatch_logs_policy = true
+  attach_network_policy         = false
+  attach_policy_json            = true
   attach_tracing_policy         = true
   policy_json                   = data.aws_iam_policy_document.lambda_policy.json
 
   ## Cloudwatch Logs 
-  cloudwatch_logs_tags              = var.tags
   cloudwatch_logs_kms_key_id        = var.cloudwatch_logs_kms_key_id
-  cloudwatch_logs_retention_in_days = var.cloudwatch_logs_retention_in_days
   cloudwatch_logs_log_group_class   = var.cloudwatch_logs_log_group_class
+  cloudwatch_logs_retention_in_days = var.cloudwatch_logs_retention_in_days
+  cloudwatch_logs_tags              = var.tags
 }
 
 ## EventBridge rule to capture AWS Organizations account closure events
@@ -77,17 +77,19 @@ module "lambda_function" {
 # - EventSource: organizations.amazonaws.com
 # - EventName: CloseAccount
 resource "aws_cloudwatch_event_rule" "account_closed" {
+  name = "${var.lambda_function_name}-trigger"
   description = "Captures AWS Organizations account closure events"
+  tags = var.tags
+
   event_pattern = jsonencode({
+    detail-type = ["AWS Service Event via CloudTrail"]
+    source      = ["aws.organizations"]
+
     detail = {
       eventName   = ["CloseAccount"]
       eventSource = ["organizations.amazonaws.com"]
     }
-    detail-type = ["AWS Service Event via CloudTrail"]
-    source      = ["aws.organizations"]
   })
-  name = "${var.lambda_function_name}-trigger"
-  tags = var.tags
 }
 
 ## EventBridge target configuration

@@ -33,11 +33,6 @@ variable "lambda_function_name" {
   default     = "lza-graveyard"
 }
 
-variable "lambda_role_name" {
-  description = "Name of the IAM role for the Lambda function"
-  type        = string
-}
-
 variable "lambda_role_path" {
   description = "Path for the IAM role for the Lambda function"
   type        = string

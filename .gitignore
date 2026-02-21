@@ -45,3 +45,11 @@ todo.md
 # Ignore lambda zip files and build directories
 *.zip
 builds/
+
+# Python related 
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+.pytest_cache/
