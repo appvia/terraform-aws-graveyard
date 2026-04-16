@@ -29,18 +29,18 @@ data "aws_iam_policy_document" "lambda_policy" {
 ## Lambda function that handles AWS Organization account movements, using the terraform-aws-modules/lambda/aws module
 module "lambda_function" {
   source  = "terraform-aws-modules/lambda/aws"
-  version = "8.5.0"
+  version = "8.7.0"
 
-  function_name                = var.lambda_function_name
-  function_tags                = var.tags
-  description                  = var.lambda_description
-  handler                      = "handler.lambda_handler"
-  hash_extra                   = "graveyard_ou_name=${var.graveyard_ou_name}"
-  runtime                      = var.lambda_runtime
-  source_path                  = "${path.module}/assets/functions/handler.py"
-  tags                         = var.tags
-  timeout                      = 30
-  trigger_on_package_timestamp = false
+  function_name = var.lambda_function_name
+  function_tags = var.tags
+  description   = var.lambda_description
+  handler       = "handler.lambda_handler"
+  hash_extra    = "graveyard_ou_name=${var.graveyard_ou_name}"
+  runtime       = var.lambda_runtime
+  source_path   = "${path.module}/assets/functions/handler.py"
+  tags          = var.tags
+  timeout       = 30
+
   environment_variables = {
     GRAVEYARD_OU_NAME = var.graveyard_ou_name
     SNS_TOPIC_ARN     = var.sns_topic_arn
@@ -62,7 +62,7 @@ module "lambda_function" {
   attach_tracing_policy         = true
   policy_json                   = data.aws_iam_policy_document.lambda_policy.json
 
-  ## Cloudwatch Logs 
+  ## Cloudwatch Logs
   cloudwatch_logs_kms_key_id        = var.cloudwatch_logs_kms_key_id
   cloudwatch_logs_log_group_class   = var.cloudwatch_logs_log_group_class
   cloudwatch_logs_retention_in_days = var.cloudwatch_logs_retention_in_days
@@ -133,3 +133,4 @@ resource "aws_lambda_permission" "allow_eventbridge_scheduled" {
   source_arn    = aws_cloudwatch_event_rule.scheduled_check.arn
   statement_id  = "AllowEventBridgeScheduledInvoke"
 }
+
