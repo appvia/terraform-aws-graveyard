@@ -30,7 +30,7 @@ variable "lambda_description" {
 variable "lambda_function_name" {
   description = "Name of the Lambda function"
   type        = string
-  default     = "lza-graveyard"
+  default     = "lz-graveyard"
 }
 
 variable "lambda_role_path" {
@@ -61,3 +61,4 @@ variable "schedule_expression" {
   type        = string
   default     = "rate(1 day)"
 }
+
