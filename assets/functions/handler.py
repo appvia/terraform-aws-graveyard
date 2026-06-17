@@ -211,7 +211,7 @@ def lambda_handler(event, context):
         "Processing account closure event",
         extra={
             "action": "lambda_handler",
-            "request_id": context.request_id,
+            "request_id": context.aws_request_id,
         },
     )
 
@@ -224,7 +224,7 @@ def lambda_handler(event, context):
                 "No closed accounts found for processing",
                 extra={
                     "action": "lambda_handler",
-                    "request_id": context.request_id,
+                    "request_id": context.aws_request_id,
                 },
             )
             return {
@@ -303,7 +303,7 @@ def lambda_handler(event, context):
             "Account closure processing completed",
             extra={
                 "action": "lambda_handler",
-                "request_id": context.request_id,
+                "request_id": context.aws_request_id,
                 "total_processed": len(processed_accounts),
                 "total_failed": len(failed_accounts),
                 "processed_accounts": processed_accounts,
@@ -326,7 +326,7 @@ def lambda_handler(event, context):
             "Error processing account closures",
             extra={
                 "action": "lambda_handler",
-                "request_id": context.request_id,
+                "request_id": context.aws_request_id,
                 "error": str(e),
             },
         )
